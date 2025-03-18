@@ -10,10 +10,90 @@ import (
 )
 
 func main() {
-	//-------
+	//-------------
+
 }
 
-func FetchURLs(urls []string) map[string]string {
+// Использование wg #1
+func exercise1() {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		fmt.Println("Hello from goroutine!")
+	}()
+	wg.Wait()
+}
+
+// Использование wg #2
+func exercise2() {
+	wg := sync.WaitGroup{}
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fmt.Printf("горутина - <%d>\n", i)
+		}()
+	}
+
+	wg.Wait()
+}
+
+// Итерация по каналу, использование close()
+func exercise3() { //
+	incCh := func(c chan int) {
+		for i := 0; i < 5; i++ {
+			c <- i
+		}
+		close(c)
+	}
+	ch := make(chan int)
+	go incCh(ch)
+	sum := 0
+	for e := range ch {
+		sum += e
+	}
+	fmt.Println(sum)
+}
+
+// Использование mutex
+func exercise4() {
+	wg := sync.WaitGroup{}
+	my := sync.Mutex{}
+	count := 0
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			my.Lock()
+			count++
+			my.Unlock()
+		}()
+	}
+	wg.Wait()
+	fmt.Println(count)
+}
+
+// Использование atomic
+func exercise5() {
+	var p int64
+	wg := sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			atomic.AddInt64(&p, 1)
+
+		}()
+	}
+	wg.Wait()
+	fmt.Println(p)
+}
+
+// Запросы к url в горутинах
+func exercise6(urls []string) map[string]string {
 	wg := sync.WaitGroup{}
 	mu := sync.Mutex{}
 	urlMap := make(map[string]string, len(urls))
@@ -44,157 +124,22 @@ func FetchURLs(urls []string) map[string]string {
 	return urlMap
 }
 
-func incCh(c chan int) {
-	for i := 1; i <= 5; i++ {
-		c <- i
-	}
-	close(c)
-}
-
-func ex1() {
+// паттерн funIn
+func merge(chls ...<-chan int) <-chan int {
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		fmt.Println("Hello from goroutine!")
-	}()
-	wg.Wait()
-}
+	wg.Add(len(chls))
 
-func ex2() {
-	wg := sync.WaitGroup{}
-
-	for i := 1; i <= 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			fmt.Printf("горутина - <%d>\n", i)
-		}()
-	}
-
-	wg.Wait()
-}
-
-func ex3() {
-	ch := make(chan int)
-	s := 0
-	go incCh(ch)
-	for e := range ch {
-		s += e
-	}
-	fmt.Println(s)
-}
-
-func ex4() {
-	wg := sync.WaitGroup{}
-	my := sync.Mutex{}
-	count := 0
-
-	for i := 1; i <= 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			my.Lock()
-			count++
-			my.Unlock()
-		}()
-	}
-	wg.Wait()
-	fmt.Println(count)
-}
-
-func ex5() {
-	var p int64
-	wg := sync.WaitGroup{}
-	for i := 1; i <= 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			atomic.AddInt64(&p, 1)
-
-		}()
-	}
-	wg.Wait()
-	fmt.Println(p)
-}
-
-func ex6() { //funIn
-	// Функция generate отправляет числа в канал
-	generate := func(id int, ch chan<- int) {
-		defer close(ch)
-		for i := 1; i < 5; i++ {
-			fmt.Println("Горутина", id, "отправила", i)
-			ch <- i
-		}
-		// Закрываем канал после отправки всех данных
-	}
-
-	// Функция fanIn объединяет данные из нескольких каналов в один
-	fanIn := func(c chan int, cs ...chan int) {
-		wg := sync.WaitGroup{}
-		wg.Add(len(cs))
-
-		for _, ch := range cs {
-			go func(ch chan int) {
-				defer wg.Done()
-				for el := range ch {
-					c <- el
-				}
-			}(ch) // Передаем ch как аргумент, чтобы избежать захвата переменной
-		}
-		go func() {
-			wg.Wait()
-			close(c)
-		}()
-	}
-
-	// Создаем выходной канал
 	chOut := make(chan int)
 
-	// Создаем срез каналов
-	chls := make([]chan int, 3)
-	for i := 0; i < 3; i++ {
-		chls[i] = make(chan int)
-		go generate(i, chls[i]) // Запускаем горутины для генерации данных
-	}
-
-	// Объединяем данные из всех каналов в один
-	fanIn(chOut, chls...)
-
-	// Читаем данные из выходного канала
-	for e := range chOut {
-		fmt.Println(e)
-	}
-}
-
-func ex7() { //funOut
-	wg := sync.WaitGroup{}
-
-	worker := func(id int, chIn chan int, chOut chan int) {
+	send := func(ch <-chan int) {
 		defer wg.Done()
-		for ch := range chIn {
-			v := ch * 2
-			fmt.Printf("Горутина %d выполнила работу %d\n", id, v)
-			chOut <- v
+		for i := range ch {
+			chOut <- i
 		}
 	}
 
-	chIn := make(chan int)
-	chOut := make(chan int)
-
-	countWorker := 5
-	wg.Add(countWorker)
-
-	//Пишем в канал
-	go func() {
-		for i := 0; i < 15; i++ {
-			chIn <- i
-		}
-		close(chIn)
-	}()
-
-	for i := 0; i < countWorker; i++ {
-		go worker(i, chIn, chOut)
+	for _, ch := range chls {
+		go send(ch)
 	}
 
 	go func() {
@@ -202,7 +147,90 @@ func ex7() { //funOut
 		close(chOut)
 	}()
 
-	for el := range chOut {
+	return chOut
+}
+
+func exercise7() {
+
+	ch1 := make(chan int)
+	ch2 := make(chan int)
+
+	go func() {
+		ch1 <- 1
+		ch1 <- 2
+		close(ch1)
+	}()
+
+	go func() {
+		ch2 <- 1
+		ch2 <- 2
+		close(ch2)
+	}()
+
+	ch := merge(ch1, ch2)
+
+	for el := range ch {
 		fmt.Println(el)
+	}
+
+}
+
+// паттерн funOut
+
+func split(ch <-chan int, n int) []<-chan int {
+	chls := make([]chan int, 0, n)
+	for i := 0; i < n; i++ {
+		chls = append(chls, make(chan int))
+	}
+
+	toCannels := func(ch <-chan int, cnls []chan int) {
+
+		defer func(cnls []chan int) {
+			for _, c := range cnls {
+				close(c)
+			}
+		}(chls)
+
+		for {
+			for _, c := range cnls {
+				select {
+				case e, open := <-ch:
+					if !open {
+						return
+					}
+					c <- e
+				}
+			}
+		}
+	}
+
+	go toCannels(ch, chls)
+
+	result := make([]<-chan int, len(chls))
+	for i, c := range chls {
+		result[i] = c
+	}
+	return result
+}
+
+func exercise8() {
+	wg := sync.WaitGroup{}
+	ch := make(chan int)
+	go func() {
+		for i := 0; i < 5; i++ {
+			ch <- i
+		}
+		close(ch)
+	}()
+
+	c := split(ch, 5)
+	wg.Add(len(c))
+	for _, chl := range c {
+		go func() {
+			defer wg.Done()
+			for i := range chl {
+				fmt.Println(i)
+			}
+		}()
 	}
 }
